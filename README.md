@@ -163,6 +163,3 @@ The platform currently covers:
 
 ACM Student Chapter
 
-## Project Lead
-
-D. Kanishka
