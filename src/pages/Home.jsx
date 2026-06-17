@@ -17,11 +17,11 @@ const Home = () => {
             Interactive lessons, curated YouTube resources, practical quizzes, and progress tracking to help you become a database master.
           </p>
           <div className="hero-actions">
-            <Link to="/topics" className="btn btn-primary btn-lg">
+            <Link to="/auth" className="btn btn-primary btn-lg">
               Start Learning <ArrowRight size={20} />
             </Link>
-            <Link to="/dashboard" className="btn btn-outline btn-lg">
-              View Dashboard
+            <Link to="/auth" className="btn btn-outline btn-lg">
+              Admin Portal
             </Link>
           </div>
         </div>

@@ -1,35 +1,146 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { PlayCircle, FileText, CheckCircle, ChevronRight, ArrowLeft } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 import './TopicDetail.css';
 
 const TopicDetail = () => {
   const { id } = useParams();
   const [activeTab, setActiveTab] = useState('video'); // 'video' or 'notes'
+  const [topic, setTopic] = useState(null);
+  const [lessons, setLessons] = useState([]);
+  const [videoLesson, setVideoLesson] = useState(null);
+  const [notesLesson, setNotesLesson] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [allTopics, setAllTopics] = useState([]);
+  const [userProgress, setUserProgress] = useState({});
 
-  // Mock data for topic
-  const topic = {
-    id,
-    title: 'SELECT Statements',
-    description: 'Learn how to retrieve data from a database using the fundamental SELECT statement.',
-    videoId: 'c_K3XlP1lkk', // Example YouTube ID (not real, just placeholder format)
-    notes: `
-      <h2>The SELECT Statement</h2>
-      <p>The SELECT statement is used to select data from a database.</p>
-      <p>The data returned is stored in a result table, called the result-set.</p>
+  useEffect(() => {
+    fetchTopicDetails();
+  }, [id]);
+
+  const fetchTopicDetails = async () => {
+    try {
+      setLoading(true);
+
+      // Fetch topic details
+      const { data: topicData, error: topicError } = await supabase
+        .from('topics')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (topicError) throw topicError;
+      setTopic(topicData);
+
+      // Fetch lessons for this topic
+      const { data: lessonsData, error: lessonsError } = await supabase
+        .from('lessons')
+        .select('*')
+        .eq('topic_id', id)
+        .order('order_index', { ascending: true });
+
+      if (lessonsError) throw lessonsError;
+      setLessons(lessonsData);
+
+      // Separate video and notes lessons
+      const video = lessonsData.find(lesson => lesson.lesson_type === 'video');
+      const notes = lessonsData.find(lesson => lesson.lesson_type === 'notes');
       
-      <h3>Syntax</h3>
-      <pre><code>SELECT column1, column2, ...\nFROM table_name;</code></pre>
+      setVideoLesson(video);
+      setNotesLesson(notes);
+
+      // Fetch all topics for sidebar navigation
+      const { data: allTopicsData, error: allTopicsError } = await supabase
+        .from('topics')
+        .select('id, title, order_index')
+        .order('order_index', { ascending: true });
+
+      if (allTopicsError) throw allTopicsError;
+      setAllTopics(allTopicsData);
+
+      // Get current user and their progress
+      const { data: { user } } = await supabase.auth.getUser();
       
-      <p>Here, column1, column2, ... are the field names of the table you want to select data from.</p>
-      <p>If you want to select all the fields available in the table, use the following syntax:</p>
-      
-      <pre><code>SELECT *\nFROM table_name;</code></pre>
-      
-      <h3>Example</h3>
-      <pre><code>SELECT CustomerName, City\nFROM Customers;</code></pre>
-    `
+      if (user) {
+        const { data: progressData, error: progressError } = await supabase
+          .from('user_progress')
+          .select('topic_id, status')
+          .eq('user_id', user.id);
+
+        if (progressError) throw progressError;
+
+        const progressMap = progressData.reduce((acc, item) => {
+          acc[item.topic_id] = item.status;
+          return acc;
+        }, {});
+
+        setUserProgress(progressMap);
+      }
+
+    } catch (error) {
+      console.error('Error fetching topic details:', error);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // Extract YouTube video ID from URL
+  const getYouTubeEmbedUrl = (url) => {
+    if (!url) return '';
+    
+    // If it's already just an ID
+    if (url.length === 11 && !url.includes('/') && !url.includes('.')) {
+      return `https://www.youtube.com/embed/${url}`;
+    }
+    
+    // Extract ID from various YouTube URL formats
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    const videoId = (match && match[2].length === 11) ? match[2] : url;
+    
+    return `https://www.youtube.com/embed/${videoId}`;
+  };
+
+  // Calculate progress percentage
+  const calculateProgress = () => {
+    if (allTopics.length === 0) return 0;
+    const completedCount = allTopics.filter(t => userProgress[t.id] === 'completed').length;
+    return Math.round((completedCount / allTopics.length) * 100);
+  };
+
+  // Get lesson status for sidebar
+  const getLessonStatus = (topicId) => {
+    if (userProgress[topicId] === 'completed') return 'completed';
+    if (topicId === id) return 'active';
+    return 'pending';
+  };
+
+  if (loading) {
+    return (
+      <div className="topic-detail-page animate-fade-in">
+        <Link to="/topics" className="back-link">
+          <ArrowLeft size={16} /> Back to Topics
+        </Link>
+        <div style={{ textAlign: 'center', padding: '3rem', fontSize: '1.1rem', color: 'var(--text-muted)' }}>
+          Loading topic details...
+        </div>
+      </div>
+    );
+  }
+
+  if (!topic) {
+    return (
+      <div className="topic-detail-page animate-fade-in">
+        <Link to="/topics" className="back-link">
+          <ArrowLeft size={16} /> Back to Topics
+        </Link>
+        <div style={{ textAlign: 'center', padding: '3rem', fontSize: '1.1rem', color: 'var(--text-muted)' }}>
+          Topic not found
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="topic-detail-page animate-fade-in">
@@ -67,20 +178,26 @@ const TopicDetail = () => {
           <div className="tab-content card">
             {activeTab === 'video' ? (
               <div className="video-container">
-                <iframe 
-                  width="100%" 
-                  height="100%" 
-                  src={`https://www.youtube.com/embed/HXV3zeQKqGY`} 
-                  title="YouTube video player" 
-                  frameBorder="0" 
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                  allowFullScreen
-                ></iframe>
+                {videoLesson && videoLesson.video_url ? (
+                  <iframe 
+                    width="100%" 
+                    height="100%" 
+                    src={getYouTubeEmbedUrl(videoLesson.video_url)} 
+                    title="YouTube video player" 
+                    frameBorder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowFullScreen
+                  ></iframe>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    No video available for this topic yet
+                  </div>
+                )}
               </div>
             ) : (
               <div 
                 className="notes-container"
-                dangerouslySetInnerHTML={{ __html: topic.notes }}
+                dangerouslySetInnerHTML={{ __html: notesLesson?.notes_content || '<p>No notes available for this topic yet</p>' }}
               />
             )}
           </div>
@@ -90,23 +207,22 @@ const TopicDetail = () => {
           <div className="card course-progress">
             <h3>Module Progress</h3>
             <div className="progress-bar-container">
-              <div className="progress-bar"><div className="fill" style={{width: '33%'}}></div></div>
-              <span className="progress-text">1/3 Completed</span>
+              <div className="progress-bar"><div className="fill" style={{width: `${calculateProgress()}%`}}></div></div>
+              <span className="progress-text">{Object.values(userProgress).filter(s => s === 'completed').length}/{allTopics.length} Completed</span>
             </div>
             
             <ul className="lesson-list">
-              <li className="lesson-item completed">
-                <CheckCircle size={16} className="text-success" />
-                <span>Introduction</span>
-              </li>
-              <li className="lesson-item active">
-                <PlayCircle size={16} className="text-primary" />
-                <span>SELECT Statements</span>
-              </li>
-              <li className="lesson-item">
-                <div className="circle-empty"></div>
-                <span>Filtering (WHERE)</span>
-              </li>
+              {allTopics.slice(0, 3).map((t, index) => {
+                const status = getLessonStatus(t.id);
+                return (
+                  <li key={t.id} className={`lesson-item ${status}`}>
+                    {status === 'completed' && <CheckCircle size={16} className="text-success" />}
+                    {status === 'active' && <PlayCircle size={16} className="text-primary" />}
+                    {status === 'pending' && <div className="circle-empty"></div>}
+                    <span>{t.title}</span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>
